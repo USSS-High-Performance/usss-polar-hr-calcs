@@ -13,7 +13,7 @@ group <- Sys.getenv("SB_ATHLETE_GROUP")
 
 form_name <- "Polar Summary - Training"
 source_field <- "Heart Rate Samples"
-max_field <- "Historical Max HR" # histortical calc from Polar HR data
+max_field <- "Max HR - All Time" # histortical calc from Polar HR data
 target_field <- "Polar HR Data"
 
 # Load recent Polar Summary - Training
