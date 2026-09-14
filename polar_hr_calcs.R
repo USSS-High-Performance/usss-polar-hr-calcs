@@ -8,6 +8,7 @@ load_dotenv(".env")
 username <- Sys.getenv("SB_USERNAME")
 password <- Sys.getenv("SB_PASSWORD")
 url <- Sys.getenv("SB_URL")
+group_id <- Sys.getenv("SB_ATHLETE_GROUP_ID")
 form_name <- "Polar Summary - Training"
 source_field <- "Heart Rate Samples"
 max_field <- "Historical Max HR"
