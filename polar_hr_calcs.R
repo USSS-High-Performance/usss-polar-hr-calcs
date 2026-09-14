@@ -1,41 +1,56 @@
 library(dplyr)
-library(stringr)
+library(readr)
 library(smartabaseR)
-library(load_dotenv)
-library(datetime)
+library(dotenv)
+library(lubridate)
+dotenv::load_dot_env(".env")
 
-load_dotenv(".env")
 username <- Sys.getenv("SB_USERNAME")
 password <- Sys.getenv("SB_PASSWORD")
 url <- Sys.getenv("SB_URL")
-group_id <- Sys.getenv("SB_ATHLETE_GROUP_ID")
+group <- Sys.getenv("SB_ATHLETE_GROUP")
+
 form_name <- "Polar Summary - Training"
 source_field <- "Heart Rate Samples"
-max_field <- "Historical Max HR"
+max_field <- "Historical Max HR" # histortical calc from Polar HR data
 target_field <- "Polar HR Data"
 
 # Load recent Polar Summary - Training
-
 today <- lubridate::today()
 yesterday <- today - lubridate::days(1)
+
 # format to dd/mm/yyyy
-today_formatted <- format(today, "%d/%m/%Y")
-yesterday_formatted <- format(yesterday, "%d/%m/%Y")
+today_formatted <- as.character(format(today, "%d/%m/%Y"))
+yesterday_formatted <- as.character(format(yesterday, "%d/%m/%Y"))
 
 sessions <- sb_get_event(
-    form = form_name,
-    date_range = c(yesterday, today),
-    url = url,
-    username = username,
-    password = password
-)
+  form = form_name,
+  date_range = c(yesterday_formatted, today_formatted),
+  url = url,
+  username = username,
+  password = password,
+  filter = sb_get_event_filter(
+    user_key = "group",
+    user_value = group
+  )
+) %>%
+  filter(!is.na(.data[["ID"]])) %>%
+  select(
+    about,
+    user_id,
+    form,
+    event_id,
+    all_of(c(max_field, source_field, target_field))
+  )
+names(sessions)
 
 # Filter out sessions that have already been processed (i.e. if field is not empty, blank, or "")
-sessions_to_process <- sessions %>%
+sessions <- sessions %>%
     filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == " ")
 
+
 # for each session that needs processing, get the source field, and manipulate data to put into target field
-    # 1. pull the Historical Max HR field, if it is empty, then pull the max value from Heart Rate Samples csv, Heart Rate column after converted to df
+    # 1. pull the Historical Max HR field
     # 2. pull the Heart Rate Samples field, and convert it from csv with columns Timestamp,Heart Rate to a df
     # 3. add a column called Heart Rate % of Max, which is Heart Rate / Historical Max HR * 100
     # 4. convert the df back to csv 
