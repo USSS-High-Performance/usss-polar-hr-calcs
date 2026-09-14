@@ -98,9 +98,7 @@ sessions_upload <- sessions %>%
     user_id,
     event_id,
     .data[[target_field]]
-  ) %>% filter(
-    user_id == 12667
-  )
+  ) 
 
 # Upload data to Smartabase
 sb_update_event(
