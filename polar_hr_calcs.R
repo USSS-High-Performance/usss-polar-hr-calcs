@@ -1,4 +1,5 @@
 library(dplyr)
+library(purrr)
 library(readr)
 library(smartabaseR)
 library(dotenv)
@@ -38,21 +39,73 @@ sessions <- sb_get_event(
   select(
     about,
     user_id,
+    start_date,
     form,
     event_id,
     all_of(c(max_field, source_field, target_field))
   )
-names(sessions)
 
 # Filter out sessions that have already been processed (i.e. if field is not empty, blank, or "")
 sessions <- sessions %>%
     filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == " ")
 
+# if all sessions have been processed exit script
 
-# for each session that needs processing, get the source field, and manipulate data to put into target field
-    # 1. pull the Historical Max HR field
-    # 2. pull the Heart Rate Samples field, and convert it from csv with columns Timestamp,Heart Rate to a df
-    # 3. add a column called Heart Rate % of Max, which is Heart Rate / Historical Max HR * 100
-    # 4. convert the df back to csv 
-    # 5. Insert back into the target field and reupload just that field for the session (using event-id to identify)
-    
+#function to transform hr
+transform_hr <- function(hr_csv, max_hr) {
+  
+  # manipulate the HR Data, splitting text into df
+  hr_data <- read.csv(
+    text = gsub("<\\s*br\\s*/?>", "\n", hr_csv),
+    check.names = FALSE
+  ) %>% mutate(
+     "% of Max HR" = round(`Heart Rate` / max_hr, 4) * 100 # take % of max HR
+  )
+  
+  # convert hr_data back into text csv
+  hr_csv_updated <- paste(
+    capture.output(
+      write.csv(
+        hr_data,
+        row.names = FALSE,
+        quote = FALSE
+      )
+    ),
+    collapse = "\n"
+  )
+  
+  return(hr_csv_updated)
+}
+
+# apply transform_hr to the sessions df
+sessions_upload <- sessions %>%
+  mutate(
+    !!target_field := map2_chr(
+      .data[[source_field]], # pull the Heart Rate Samples field
+      .data[[max_field]], # pull the Historical Max HR field
+      ~ transform_hr(
+        hr_csv = .x,
+        max_hr = .y
+      )
+    )
+  ) %>% select(
+    form,
+    start_date,
+    user_id,
+    event_id,
+    .data[[target_field]]
+  ) %>% filter(
+    user_id == 12667
+  )
+
+# Upload data to Smartabase
+sb_update_event(
+  df = sessions_upload,
+  form = form_name,
+  url = url,
+  username = username,
+  password = password,
+  option = sb_update_event_option(
+    interactive_mode = FALSE # to prevent console internaction
+  )
+)
