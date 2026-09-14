@@ -50,6 +50,10 @@ sessions <- sessions %>%
     filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == " ")
 
 # if all sessions have been processed exit script
+if (nrow(sessions) == 0) {
+  message("No new sessions to process. Exiting script.")
+  quit(save = "no", status = 0)
+}
 
 #function to transform hr
 transform_hr <- function(hr_csv, max_hr) {
