@@ -102,9 +102,14 @@ sessions_upload <- sessions %>%
     user_id,
     event_id,
     .data[[target_field]]
-  ) %>% filter(
-    user_id == 12667
   )
+
+# Exit cleanly if nothing is left to upload. sb_update_event errors on an
+# empty data frame, so guard against it here.
+if (nrow(sessions_upload) == 0) {
+  message("No sessions to upload after processing. Exiting script.")
+  quit(save = "no", status = 0)
+}
 
 # Upload data to Smartabase
 sb_update_event(
