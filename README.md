@@ -18,6 +18,7 @@ The single script `polar_hr_calcs.R` runs end to end:
    still empty).
 3. For each session, parses the raw heart rate CSV and adds a `% of Max HR`
    column, calculated against that athlete's `Max HR - All Time` value.
+      - `Max HR - All Time` = max(`Maximum Heart Rate` from last 2 years, 220 - Age)
 4. Writes the transformed data back to the `Polar HR Data` field on the same
    event.
 
