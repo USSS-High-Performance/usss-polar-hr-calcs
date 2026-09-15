@@ -20,8 +20,16 @@ jobs:
         with:
           use-public-rspm: true
 
+      # setup-r-dependencies caches the installed library across runs, keyed on
+      # the package list below, so packages are only rebuilt when this list
+      # changes. smartabaseR is installed here too (pak understands the
+      # owner/repo GitHub shorthand) so it is cached alongside the rest.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
+        env:
+          # Authenticate the GitHub API call so it uses the Actions token
+          # rather than the rate limited bundled PAT.
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         with:
           packages: |
             any::dplyr
@@ -29,16 +37,7 @@ jobs:
             any::readr
             any::dotenv
             any::lubridate
-
-      - name: Install smartabaseR
-        env:
-          # Authenticate the GitHub API call so it uses the Actions token
-          # rather than the rate limited bundled PAT.
-          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          install.packages("remotes")
-          remotes::install_github("Teamworksapp/smartabaseR")
-        shell: Rscript {0}
+            Teamworksapp/smartabaseR
 
       - name: Run Polar HR calcs
         env:
