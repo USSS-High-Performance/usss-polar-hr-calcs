@@ -22,7 +22,7 @@ target_field <- "Polar HR Data"
 
 # Load recent Polar Summary - Training
 today <- lubridate::today()
-yesterday <- today - lubridate::days(1)
+yesterday <- today - lubridate::days(30)
 
 # format to dd/mm/yyyy
 today_formatted <- as.character(format(today, "%d/%m/%Y"))
