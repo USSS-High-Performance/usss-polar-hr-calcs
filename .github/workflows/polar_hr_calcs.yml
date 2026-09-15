@@ -31,9 +31,13 @@ jobs:
             any::lubridate
 
       - name: Install smartabaseR
+        env:
+          # Authenticate the GitHub API call so it uses the Actions token
+          # rather than the rate limited bundled PAT.
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
           install.packages("remotes")
-          remotes::install_github("smartabase/smartabaseR")
+          remotes::install_github("Teamworksapp/smartabaseR")
         shell: Rscript {0}
 
       - name: Run Polar HR calcs
