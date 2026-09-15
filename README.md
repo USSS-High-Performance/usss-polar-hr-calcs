@@ -30,7 +30,9 @@ A GitHub Actions workflow (`.github/workflows/polar_hr_calcs.yml`) runs the
 script at minute 8 and 38 of every hour (a 30 minute cadence). Cron in GitHub
 Actions is evaluated in UTC, and scheduled runs can be delayed under GitHub
 load. You can also trigger a run manually from the repository's Actions tab
-(the workflow has `workflow_dispatch` enabled).
+(the workflow has `workflow_dispatch` enabled). The non-round timing was chosen
+to try to prevent execessive queueing of the task as this action competes for 
+resources. 
 
 ## Secrets
 
