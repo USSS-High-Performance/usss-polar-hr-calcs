@@ -4,7 +4,11 @@ library(readr)
 library(smartabaseR)
 library(dotenv)
 library(lubridate)
-dotenv::load_dot_env(".env")
+# Load .env for local development. In CI the credentials are supplied as
+# environment variables, so skip loading when no .env file is present.
+if (file.exists(".env")) {
+  dotenv::load_dot_env(".env")
+}
 
 username <- Sys.getenv("SB_USERNAME")
 password <- Sys.getenv("SB_PASSWORD")
@@ -99,6 +103,13 @@ sessions_upload <- sessions %>%
     event_id,
     .data[[target_field]]
   ) 
+
+# Exit cleanly if nothing is left to upload. sb_update_event errors on an
+# empty data frame, so guard against it here.
+if (nrow(sessions_upload) == 0) {
+  message("No sessions to upload after processing. Exiting script.")
+  quit(save = "no", status = 0)
+}
 
 # Upload data to Smartabase
 sb_update_event(
