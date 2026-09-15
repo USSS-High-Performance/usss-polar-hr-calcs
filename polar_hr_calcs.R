@@ -4,7 +4,11 @@ library(readr)
 library(smartabaseR)
 library(dotenv)
 library(lubridate)
-dotenv::load_dot_env(".env")
+# Load .env for local development. In CI the credentials are supplied as
+# environment variables, so skip loading when no .env file is present.
+if (file.exists(".env")) {
+  dotenv::load_dot_env(".env")
+}
 
 username <- Sys.getenv("SB_USERNAME")
 password <- Sys.getenv("SB_PASSWORD")
