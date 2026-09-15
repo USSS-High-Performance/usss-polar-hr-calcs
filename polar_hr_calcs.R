@@ -102,7 +102,7 @@ sessions_upload <- sessions %>%
     user_id,
     event_id,
     .data[[target_field]]
-  )
+  ) 
 
 # Exit cleanly if nothing is left to upload. sb_update_event errors on an
 # empty data frame, so guard against it here.
