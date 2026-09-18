@@ -5,7 +5,7 @@ name: Polar HR Calcs
 # unaffected by timezone, and scheduled runs can be delayed under GitHub load.
 on:
   schedule:
-    - cron: "8,38 * * * *"
+    - cron: "0 7 * * *"
   workflow_dispatch: {}   # allow manual runs from the Actions tab
 
 jobs:
