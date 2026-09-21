@@ -15,14 +15,14 @@ password <- Sys.getenv("SB_PASSWORD")
 url <- Sys.getenv("SB_URL")
 group <- Sys.getenv("SB_ATHLETE_GROUP")
 
-form_name <- "Polar Summary - Training"
+form_name <- "Polar Summary - Training - HR"
 source_field <- "Heart Rate Samples"
 max_field <- "Max HR - All Time" # histortical calc from Polar HR data
 target_field <- "Polar HR Data"
 
 # Load recent Polar Summary - Training
 today <- lubridate::today()
-yesterday <- today - lubridate::days(1)
+yesterday <- today - lubridate::days(2)
 
 # format to dd/mm/yyyy
 today_formatted <- as.character(format(today, "%d/%m/%Y"))
@@ -38,7 +38,9 @@ sessions <- sb_get_event(
     user_key = "group",
     user_value = group
   )
-) %>%
+) 
+
+sessions <- sessions %>%
   filter(!is.na(.data[["ID"]])) %>%
   select(
     about,
@@ -51,7 +53,7 @@ sessions <- sb_get_event(
 
 # Filter out sessions that have already been processed (i.e. if field is not empty, blank, or "")
 sessions <- sessions %>%
-    filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == " ")
+    filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == "-")
 
 # if all sessions have been processed exit script
 if (nrow(sessions) == 0) {
