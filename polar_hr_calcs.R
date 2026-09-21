@@ -48,12 +48,16 @@ sessions <- sessions %>%
     start_date,
     form,
     event_id,
-    all_of(c(max_field, source_field, target_field))
+    all_of(c(max_field, source_field)),
+    any_of(target_field)
   )
 
-# Filter out sessions that have already been processed (i.e. if field is not empty, blank, or "")
-sessions <- sessions %>%
+# Check if target field exists. If it does, keep only rows where it is blank;
+# otherwise, keep all sessions for the initial upload.
+if (target_field %in% names(sessions)) {
+  sessions <- sessions %>%
     filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == "-")
+}
 
 # if all sessions have been processed exit script
 if (nrow(sessions) == 0) {
