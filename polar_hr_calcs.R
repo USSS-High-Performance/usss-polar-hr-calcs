@@ -22,7 +22,7 @@ target_field <- "Polar HR Data"
 
 # Load recent Polar Summary - Training
 today <- lubridate::today()
-yesterday <- today - lubridate::days(2)
+yesterday <- today - lubridate::days(10)
 
 # format to dd/mm/yyyy
 today_formatted <- as.character(format(today, "%d/%m/%Y"))
@@ -39,18 +39,6 @@ sessions <- sb_get_event(
     user_value = group
   )
 ) 
-
-sessions <- sessions %>%
-  filter(!is.na(.data[["ID"]])) %>%
-  select(
-    about,
-    user_id,
-    start_date,
-    form,
-    event_id,
-    all_of(c(max_field, source_field)),
-    any_of(target_field)
-  )
 
 # Check if target field exists. If it does, keep only rows where it is blank;
 # otherwise, keep all sessions for the initial upload.
