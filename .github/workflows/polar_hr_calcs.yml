@@ -4,9 +4,9 @@ name: Polar HR Calcs
 # Note: GitHub Actions cron is evaluated in UTC. Minute based schedules are
 # unaffected by timezone, and scheduled runs can be delayed under GitHub load.
 on:
-  #schedule:
-    #- cron: "0 7 * * *"
-  #workflow_dispatch: {}   # allow manual runs from the Actions tab
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
 
 jobs:
   run_polar_hr_calcs:
