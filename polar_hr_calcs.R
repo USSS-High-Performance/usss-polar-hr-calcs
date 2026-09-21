@@ -63,28 +63,46 @@ if (nrow(sessions) == 0) {
 
 #function to transform hr
 transform_hr <- function(hr_csv, max_hr) {
-  
-  # manipulate the HR Data, splitting text into df
-  hr_data <- read.csv(
-    text = gsub("<\\s*br\\s*/?>", "\n", hr_csv),
-    check.names = FALSE
-  ) %>% mutate(
-     "% of Max HR" = round(`Heart Rate` / max_hr, 4) * 100 # take % of max HR
-  )
-  
-  # convert hr_data back into text csv
-  hr_csv_updated <- paste(
-    capture.output(
-      write.csv(
-        hr_data,
-        row.names = FALSE,
-        quote = FALSE
-      )
-    ),
-    collapse = "\n"
-  )
-  
-  return(hr_csv_updated)
+
+  # Skip sessions with nothing to transform: blank or missing samples, or a
+  # missing max HR. Returning NA lets the run continue instead of erroring.
+  if (is.na(hr_csv) || !nzchar(trimws(hr_csv)) || is.na(max_hr)) {
+    return(NA_character_)
+  }
+
+  # Wrap parsing so one malformed session (e.g. no Heart Rate column) is
+  # skipped rather than halting the whole job.
+  tryCatch({
+    # manipulate the HR Data, splitting text into df
+    hr_data <- read.csv(
+      text = gsub("<\\s*br\\s*/?>", "\n", hr_csv),
+      check.names = FALSE
+    )
+
+    if (!"Heart Rate" %in% names(hr_data)) {
+      warning("Heart Rate column not found in samples; skipping session.")
+      return(NA_character_)
+    }
+
+    hr_data <- hr_data %>% mutate(
+       "% of Max HR" = round(`Heart Rate` / max_hr, 4) * 100 # take % of max HR
+    )
+
+    # convert hr_data back into text csv
+    paste(
+      capture.output(
+        write.csv(
+          hr_data,
+          row.names = FALSE,
+          quote = FALSE
+        )
+      ),
+      collapse = "\n"
+    )
+  }, error = function(e) {
+    warning("Failed to transform heart rate samples: ", conditionMessage(e))
+    NA_character_
+  })
 }
 
 # apply transform_hr to the sessions df
@@ -104,7 +122,22 @@ sessions_upload <- sessions %>%
     user_id,
     event_id,
     .data[[target_field]]
-  ) 
+  )
+
+# Drop and log any sessions that could not be transformed (blank or malformed
+# samples), so a few bad records do not block the rest of the upload.
+skipped <- sessions_upload %>%
+  filter(is.na(.data[[target_field]]))
+
+if (nrow(skipped) > 0) {
+  message(
+    "Skipped ", nrow(skipped), " session(s) with blank or invalid heart rate ",
+    "samples (event_id: ", paste(skipped$event_id, collapse = ", "), ")."
+  )
+}
+
+sessions_upload <- sessions_upload %>%
+  filter(!is.na(.data[[target_field]]))
 
 # Exit cleanly if nothing is left to upload. sb_update_event errors on an
 # empty data frame, so guard against it here.
