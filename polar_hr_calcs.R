@@ -21,6 +21,7 @@ source_field <- "Heart Rate Samples"
 max_field <- "Max HR - All Time" # histortical calc from Polar HR data
 target_field <- "Polar HR Data"
 id_field <- "ID" # unique key present on both forms, used to prevent duplicate processing
+formatted_date_field <- "Formatted Date" # new field, target form only
 
 # fields carried over unchanged from the source form to the target form
 passthrough_fields <- c(
@@ -37,7 +38,7 @@ passthrough_fields <- c(
 
 # Load recent Polar Summary - Training
 today <- lubridate::today()
-yesterday <- today - lubridate::days(3)
+yesterday <- today - lubridate::days(2)
 
 # format to dd/mm/yyyy
 today_formatted <- as.character(format(today, "%d/%m/%Y"))
@@ -152,11 +153,17 @@ sessions_upload <- sessions %>%
         max_hr = .y
       )
     )
-  ) %>% select(
+  ) %>%
+  mutate(
+    # event date, reformatted from Smartabase's dd/mm/yyyy into DD/MM/YYYY
+    !!formatted_date_field := format(lubridate::dmy(start_date), "%d/%m/%Y")
+  ) %>%
+  select(
     start_date,
     user_id,
     .data[[id_field]], # carried over from the source form to prevent duplication
     all_of(passthrough_fields), # carried over unchanged from the source form
+    .data[[formatted_date_field]],
     .data[[target_field]]
   )
 
