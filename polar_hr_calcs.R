@@ -15,22 +15,26 @@ password <- Sys.getenv("SB_PASSWORD")
 url <- Sys.getenv("SB_URL")
 group <- Sys.getenv("SB_ATHLETE_GROUP")
 
-form_name <- "Polar Summary - Training - HR"
+source_form_name <- "Polar Summary - Training"
+target_form_name <- "Polar Summary - Training - HR R"
 source_field <- "Heart Rate Samples"
 max_field <- "Max HR - All Time" # histortical calc from Polar HR data
 target_field <- "Polar HR Data"
+id_field <- "ID" # unique key present on both forms, used to prevent duplicate processing
 
 # Load recent Polar Summary - Training
 today <- lubridate::today()
-yesterday <- today - lubridate::days(10)
+yesterday <- today - lubridate::days(2)
 
 # format to dd/mm/yyyy
 today_formatted <- as.character(format(today, "%d/%m/%Y"))
 yesterday_formatted <- as.character(format(yesterday, "%d/%m/%Y"))
 
+date_range <- c(yesterday_formatted, today_formatted)
+
 sessions <- sb_get_event(
-  form = form_name,
-  date_range = c(yesterday_formatted, today_formatted),
+  form = source_form_name,
+  date_range = date_range,
   url = url,
   username = username,
   password = password,
@@ -38,14 +42,41 @@ sessions <- sb_get_event(
     user_key = "group",
     user_value = group
   )
-) 
+)
 
-# Check if target field exists. If it does, keep only rows where it is blank;
-# otherwise, keep all sessions for the initial upload.
-if (target_field %in% names(sessions)) {
-  sessions <- sessions %>%
-    filter(is.na(.data[[target_field]]) | .data[[target_field]] == "" | .data[[target_field]] == "-")
+# keep only rows with a usable ID
+sessions <- sessions %>%
+  filter(!is.na(.data[[id_field]]) & .data[[id_field]] != "")
+
+# if there are no sessions with an ID, exit script
+if (nrow(sessions) == 0) {
+  message("No source sessions with a valid ID. Exiting script.")
+  quit(save = "no", status = 0)
 }
+
+# Pull already processed sessions from the target form over the same lookback
+# so we can skip any source ID that has already been pushed there.
+target_sessions <- sb_get_event(
+  form = target_form_name,
+  date_range = date_range,
+  url = url,
+  username = username,
+  password = password,
+  filter = sb_get_event_filter(
+    user_key = "group",
+    user_value = group
+  )
+)
+
+processed_ids <- if (id_field %in% names(target_sessions)) {
+  target_sessions[[id_field]]
+} else {
+  character(0)
+}
+
+# filter down to source sessions that have not yet been processed
+sessions <- sessions %>%
+  filter(!.data[[id_field]] %in% processed_ids)
 
 # if all sessions have been processed exit script
 if (nrow(sessions) == 0) {
@@ -109,10 +140,9 @@ sessions_upload <- sessions %>%
       )
     )
   ) %>% select(
-    form,
     start_date,
     user_id,
-    event_id,
+    .data[[id_field]], # carried over from the source form to prevent duplication
     .data[[target_field]]
   )
 
@@ -124,28 +154,28 @@ skipped <- sessions_upload %>%
 if (nrow(skipped) > 0) {
   message(
     "Skipped ", nrow(skipped), " session(s) with blank or invalid heart rate ",
-    "samples (event_id: ", paste(skipped$event_id, collapse = ", "), ")."
+    "samples (ID: ", paste(skipped[[id_field]], collapse = ", "), ")."
   )
 }
 
 sessions_upload <- sessions_upload %>%
   filter(!is.na(.data[[target_field]]))
 
-# Exit cleanly if nothing is left to upload. sb_update_event errors on an
+# Exit cleanly if nothing is left to upload. sb_insert_event errors on an
 # empty data frame, so guard against it here.
 if (nrow(sessions_upload) == 0) {
   message("No sessions to upload after processing. Exiting script.")
   quit(save = "no", status = 0)
 }
 
-# Upload data to Smartabase
-sb_update_event(
+# Upload data to Smartabase as new events on the target form
+sb_insert_event(
   df = sessions_upload,
-  form = form_name,
+  form = target_form_name,
   url = url,
   username = username,
   password = password,
-  option = sb_update_event_option(
+  option = sb_insert_event_option(
     interactive_mode = FALSE # to prevent console internaction
   )
 )
