@@ -1,45 +1,26 @@
-import os
+# Cloudflare Python Worker. On each cron run, new "Polar Summary - Training"
+# sessions have their raw heart rate samples converted to % of the athlete's
+# all time max HR and are inserted as events on the target form.
 import csv
 import io
+import json
 import re
 import sys
 import logging
 from base64 import b64encode
 from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 
-import requests
+from workers import Response, WorkerEntrypoint, fetch
 
-# Load .env for local development. In CI the credentials are supplied as
-# environment variables, so skip loading when no .env file is present.
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# In a Worker stdout becomes console.log and stderr becomes console.error, so
+# send INFO to stdout and keep only warnings and errors on stderr.
+_info = logging.StreamHandler(sys.stdout)
+_info.addFilter(lambda record: record.levelno < logging.WARNING)
+_errors = logging.StreamHandler(sys.stderr)
+_errors.setLevel(logging.WARNING)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", handlers=[_info, _errors])
 log = logging.getLogger("polar_hr_calcs")
-
-username = os.environ["SB_USERNAME"]
-password = os.environ["SB_PASSWORD"]
-url = os.environ["SB_URL"]
-group = os.environ["SB_ATHLETE_GROUP"]
-
-# accept the site URL with or without a scheme or trailing slash
-BASE_URL = url.rstrip("/")
-if not BASE_URL.startswith("http"):
-    BASE_URL = f"https://{BASE_URL}"
-API_URL = f"{BASE_URL}/api/v1"
-
-credentials = b64encode(f"{username}:{password}".encode()).decode()
-HEADERS = {
-    "Authorization": f"Basic {credentials}",
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "X-APP-ID": "usss-polar-hr-calcs",
-}
-TIMEOUT = 120
 
 source_form_name = "Polar Summary - Training"
 target_form_name = "Polar Summary - Training - HR R"
@@ -67,22 +48,42 @@ USER_CHUNK_SIZE = 200  # userIds sent per eventsearch request
 INSERT_CHUNK_SIZE = 50  # events sent per insert request
 
 
-def sb_post(endpoint, payload):
-    """POST to the Teamworks AMS API and return the parsed JSON body."""
-    response = requests.post(
-        f"{API_URL}/{endpoint}?informat=json&format=json",
-        json=payload,
-        headers=HEADERS,
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    if not response.text.strip():
-        return {}
-    body = response.json()
-    # Smartabase can report errors with a 200 status and an RPC exception body
-    if isinstance(body, dict) and body.get("__is_rpc_exception__"):
-        raise RuntimeError(f"{endpoint} failed: {body.get('value')}")
-    return body
+class Smartabase:
+    """Minimal Teamworks AMS (Smartabase) API client."""
+
+    def __init__(self, env):
+        # accept the site URL with or without a scheme or trailing slash
+        base_url = env.SB_URL.rstrip("/")
+        if not base_url.startswith("http"):
+            base_url = f"https://{base_url}"
+        self.api_url = f"{base_url}/api/v1"
+
+        credentials = b64encode(f"{env.SB_USERNAME}:{env.SB_PASSWORD}".encode()).decode()
+        self.headers = {
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-APP-ID": "usss-polar-hr-calcs",
+        }
+
+    async def post(self, endpoint, payload):
+        """POST to the Teamworks AMS API and return the parsed JSON body."""
+        response = await fetch(
+            f"{self.api_url}/{endpoint}?informat=json&format=json",
+            method="POST",
+            headers=self.headers,
+            body=json.dumps(payload),
+        )
+        text = await response.text()
+        if not response.ok:
+            raise RuntimeError(f"{endpoint} failed: {response.status} {text[:500]}")
+        if not text.strip():
+            return {}
+        body = json.loads(text)
+        # Smartabase can report errors with a 200 status and an RPC exception body
+        if isinstance(body, dict) and body.get("__is_rpc_exception__"):
+            raise RuntimeError(f"{endpoint} failed: {body.get('value')}")
+        return body
 
 
 def chunked(items, size):
@@ -90,9 +91,9 @@ def chunked(items, size):
         yield items[i : i + size]
 
 
-def get_group_members(group_name):
+async def get_group_members(sb, group_name):
     """Return (member user IDs, user ID of the API account) for a group."""
-    body = sb_post("groupmembers", {"name": group_name})
+    body = await sb.post("groupmembers", {"name": group_name})
     user_ids = set()
     api_user_id = None
     for result in body.get("results", []):
@@ -103,11 +104,11 @@ def get_group_members(group_name):
     return sorted(user_ids), api_user_id
 
 
-def get_events(form_name, start_date, finish_date, user_ids):
+async def get_events(sb, form_name, start_date, finish_date, user_ids):
     """Pull events for a form and flatten them to one dict per event row."""
     records = []
     for ids in chunked(user_ids, USER_CHUNK_SIZE):
-        body = sb_post(
+        body = await sb.post(
             "eventsearch",
             {
                 "formNames": [form_name],
@@ -204,7 +205,12 @@ def build_insert_event(session, api_user_id):
     return event
 
 
-def main():
+async def main(env):
+    for key in ("SB_USERNAME", "SB_PASSWORD", "SB_URL", "SB_ATHLETE_GROUP"):
+        if not getattr(env, key, None):
+            raise RuntimeError(f"Missing {key}. Set it in .env locally or as a Worker secret.")
+    sb = Smartabase(env)
+
     # Load recent Polar Summary - Training
     today = date.today()
     start = today - timedelta(days=LOOKBACK_DAYS)
@@ -214,25 +220,25 @@ def main():
     today_formatted = today.strftime("%d/%m/%Y")
 
     # the API has no group filter on eventsearch, so resolve the group to user IDs
-    user_ids, api_user_id = get_group_members(group)
+    user_ids, api_user_id = await get_group_members(sb, env.SB_ATHLETE_GROUP)
     if not user_ids:
-        log.info("No members found in group. Exiting script.")
+        log.info("No members found in group. Exiting.")
         return
     log.info("Found %d members in group.", len(user_ids))
 
-    sessions = get_events(source_form_name, start_formatted, today_formatted, user_ids)
+    sessions = await get_events(sb, source_form_name, start_formatted, today_formatted, user_ids)
 
     # keep only rows with a usable ID
     sessions = [s for s in sessions if (s.get(id_field) or "").strip()]
 
     # if there are no sessions with an ID, exit script
     if not sessions:
-        log.info("No source sessions with a valid ID. Exiting script.")
+        log.info("No source sessions with a valid ID. Exiting.")
         return
 
     # Pull already processed sessions from the target form over the same lookback
     # so we can skip any source ID that has already been pushed there.
-    target_sessions = get_events(target_form_name, start_formatted, today_formatted, user_ids)
+    target_sessions = await get_events(sb, target_form_name, start_formatted, today_formatted, user_ids)
     processed_ids = {t[id_field] for t in target_sessions if t.get(id_field)}
 
     # filter down to source sessions that have not yet been processed, keeping
@@ -245,7 +251,7 @@ def main():
 
     # if all sessions have been processed exit script
     if not new_sessions:
-        log.info("No new sessions to process. Exiting script.")
+        log.info("No new sessions to process. Exiting.")
         return
 
     # apply transform_hr to each session
@@ -269,12 +275,20 @@ def main():
 
     # Exit cleanly if nothing is left to upload.
     if not events:
-        log.info("No sessions to upload after processing. Exiting script.")
+        log.info("No sessions to upload after processing. Exiting.")
+        return
+
+    if str(getattr(env, "DRY_RUN", "")).lower() == "true":
+        log.info(
+            "DRY_RUN: would insert %d event(s) (ID: %s).",
+            len(events),
+            ", ".join(e["rows"][0]["pairs"][0]["value"] for e in events),
+        )
         return
 
     # Upload data to Smartabase as new events on the target form
     for batch in chunked(events, INSERT_CHUNK_SIZE):
-        body = sb_post("eventsimport", {"events": batch})
+        body = await sb.post("eventsimport", {"events": batch})
         # a failed import can still return 200, with the outcome in result.state
         result = body.get("result") or {}
         state = result.get("state", "")
@@ -283,9 +297,26 @@ def main():
         log.info("Inserted %d event(s): %s %s", len(batch), state, result.get("message", ""))
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        log.exception("Polar HR calcs failed.")
-        sys.exit(1)
+class Default(WorkerEntrypoint):
+    async def scheduled(self, controller, env, ctx):
+        await self.run()
+
+    async def fetch(self, request):
+        # Local testing only. wrangler's --test-scheduled route does not work for
+        # Python Workers, so `npm run dev` sets ALLOW_MANUAL_TRIGGER and this
+        # handler runs the job on /__scheduled. Deployed, it is always a 404.
+        if (
+            str(getattr(self.env, "ALLOW_MANUAL_TRIGGER", "")).lower() == "true"
+            and urlparse(request.url).path == "/__scheduled"
+        ):
+            await self.run()
+            return Response("Ran scheduled event")
+        return Response("Not found", status=404)
+
+    async def run(self):
+        # an exception here marks the run as failed in the Workers dashboard
+        try:
+            await main(self.env)
+        except Exception:
+            log.exception("Polar HR calcs failed.")
+            raise

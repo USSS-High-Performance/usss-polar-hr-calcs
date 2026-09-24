@@ -48,6 +48,13 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Python
-__pycache__/
+# Node / Cloudflare Workers
+node_modules/
+.wrangler/
+.dev.vars*
+
+# Python / uv / pywrangler
 .venv/
+__pycache__/
+python_modules/
+.venv-workers/

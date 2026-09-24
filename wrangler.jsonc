@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "usss-polar-hr-calcs",
+  "main": "src/polar_hr_calcs.py",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["python_workers"],
+
+  // Cron only: no public workers.dev or preview URL for the deployed Worker
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // Every 30 minutes. Cloudflare cron triggers are evaluated in UTC.
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  },
+
+  // Keep console.log output from each run in the Workers dashboard
+  "observability": {
+    "enabled": true
+  }
+
+  // SB_USERNAME, SB_PASSWORD, SB_URL and SB_ATHLETE_GROUP are read from .env
+  // when running locally and from Worker secrets when deployed.
+}

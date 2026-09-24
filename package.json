@@ -1,0 +1,13 @@
+{
+  "name": "usss-polar-hr-calcs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "uv run pywrangler dev --var ALLOW_MANUAL_TRIGGER:true",
+    "deploy": "uv run pywrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.138.0"
+  }
+}
