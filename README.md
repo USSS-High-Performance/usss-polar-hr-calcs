@@ -11,7 +11,7 @@ values without any manual processing.
 
 ## What it does
 
-A Cloudflare Python Worker (`src/polar_hr_calcs.py`) runs end to end on a cron trigger against
+A Cloudflare Python Worker runs end to end on a cron trigger against
 the Teamworks AMS (Smartabase) REST API:
 
 1. Resolves the configured athlete group to a list of user IDs
@@ -30,6 +30,31 @@ the Teamworks AMS (Smartabase) REST API:
 
 If there are no new sessions, or nothing is left to upload after processing,
 the Worker logs a message and exits cleanly without inserting anything.
+
+## Project layout
+
+```
+src/
+  entry.py                  Worker entrypoint: cron handler and the dev only /__scheduled trigger
+  polar_hr_calcs/
+    config.py               form and field names, lookback and batch sizes, Settings from env
+    smartabase.py           Teamworks AMS API client (groupmembers, eventsearch, eventsimport)
+    transform.py            % of Max HR calculation on the raw samples CSV
+    sync.py                 the job: dedup on ID, transform, build and insert target events
+tests/                      pytest unit tests, run on normal Python with fakes (no network)
+wrangler.jsonc              Worker config: entrypoint, cron schedule, compatibility flags
+pyproject.toml              Python project, dev tools, pytest and ruff config
+package.json                npm shortcuts for dev, deploy, test and lint
+```
+
+Only `src/entry.py` depends on the Workers runtime. Everything in
+`src/polar_hr_calcs/` is plain Python, and the API client takes its HTTP
+function as an argument, so the logic is unit tested without Cloudflare or
+network access. Common changes:
+
+- Forms, fields, passthrough fields, lookback window: `config.py`
+- The calculation: `transform.py`
+- Which sessions are processed and what is written: `sync.py`
 
 ## Schedule
 
@@ -98,6 +123,15 @@ curl "http://localhost:8787/__scheduled?cron=*/30+*+*+*+*"
 
 Output appears in the `npm run dev` terminal. Note this is a real run: it
 inserts into Smartabase unless `DRY_RUN=true` is in `.env`.
+
+## Tests and linting
+
+```
+npm test        # uv run pytest
+npm run lint    # ruff check and ruff format --check
+```
+
+Run both before merging. `uv run ruff format .` fixes formatting.
 
 ## Deploying
 

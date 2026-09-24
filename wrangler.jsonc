@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "usss-polar-hr-calcs",
-  "main": "src/polar_hr_calcs.py",
+  "main": "src/entry.py",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["python_workers"],
 
